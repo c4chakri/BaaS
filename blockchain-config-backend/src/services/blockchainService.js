@@ -5,19 +5,20 @@ const path = require("path");
 const fileUtils = require("../utils/fileUtils");
 
 exports.createBlockchain = async (data) => {
+    getAvailablePorts();
     const blockchainDir = path.join(__dirname, "../../blockchain_data", `${data.chainName}_${data.chainId}`);
     fileUtils.createDirectory(blockchainDir);
-    
+
     const qbftConfigPath = path.join(blockchainDir, "QBFTConfig.json");
     fileUtils.writeFile(qbftConfigPath, JSON.stringify(data.qbftConfig, null, 4));
-    
+
     const besuCommand = `besu operator generate-blockchain-config --config-file="${qbftConfigPath}" --to="${blockchainDir}/networkFiles" --private-key-file-name="key"`;
-    
+
     return new Promise((resolve, reject) => {
         exec(besuCommand, async (error, stdout, stderr) => {
             if (error) return reject(new Error(`Besu error: ${error.message}`));
             if (stderr) console.warn(`Besu warning: ${stderr}`);
-            
+
             try {
                 const networkFilesDir = path.join(blockchainDir, "networkFiles/keys");
                 const qbftNetworkDir = path.join(blockchainDir, "QBFT-Network");
@@ -29,33 +30,38 @@ exports.createBlockchain = async (data) => {
 
                 const nodeAddresses = fs.readdirSync(networkFilesDir);
                 let nodeConfigs = [];
-                
-                let rpcPort = getAvailablePortRange();
-                
+
+                let rpcPort = {
+                    rpcPort: BASE_RPC_PORT,
+                    p2pPort: BASE_P2P_PORT,
+                    metricsPort: BASE_METRICS_PORT
+
+                };
+
                 nodeAddresses.forEach((address, index) => {
                     const nodeDir = path.join(qbftNetworkDir, `Node-${index + 1}/data`);
                     fileUtils.createDirectory(nodeDir);
                     fileUtils.copyFile(path.join(networkFilesDir, address, "key"), path.join(nodeDir, "key"));
                     fileUtils.copyFile(path.join(networkFilesDir, address, "key.pub"), path.join(nodeDir, "key.pub"));
-                    nodeConfigs.push({ name: `Node-${index + 1}`, address, rpcPort: rpcPort + index });
+                    nodeConfigs.push({ name: `Node-${index + 1}`, address, rpcPort: rpcPort.rpcPort + index });
                 });
 
                 createDockerComposeFile(blockchainDir, data.chainName, nodeConfigs, "");
                 console.log(`Docker Compose file created for ${data.chainName}`);
-                
+
                 exec(`docker-compose -f ${blockchainDir}/docker-compose.yml up -d besu-${data.chainName}-node1`, async (err) => {
                     if (err) return reject(new Error(`Docker error: ${err.message}`));
-                    
+
                     let attempts = 0;
                     const maxAttempts = 20;
                     const checkEnode = async () => {
                         try {
-                            const enode = await getEnodeFromLogs(data.chainName);
+                            const enode = await getEnodeFromLogs(data.chainName,rpcPort.p2pPort);
                             if (enode) {
                                 createDockerComposeFile(blockchainDir, data.chainName, nodeConfigs, enode);
                                 exec(`docker-compose -f ${blockchainDir}/docker-compose.yml up -d`, (err) => {
                                     if (err) return reject(new Error(`Docker error: ${err.message}`));
-                                    resolve({ message: "Blockchain created and running in Docker", networkRPC: `http://localhost:${rpcPort}` });
+                                    resolve({ message: "Blockchain created and running in Docker", networkRPC: `http://localhost:${rpcPort.rpcPort}` });
                                 });
                             } else {
                                 if (attempts < maxAttempts) {
@@ -80,7 +86,7 @@ exports.createBlockchain = async (data) => {
 
 
 
-async function getEnodeFromLogs(chainName) {
+async function getEnodeFromLogs(chainName,p2pPort) {
     return new Promise((resolve, reject) => {
         // Get the internal Docker IP of besu-node1
         exec(`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' besu-${chainName}-node1`, (err, ip) => {
@@ -101,7 +107,7 @@ async function getEnodeFromLogs(chainName) {
                 const match = stdout.match(/enode:\/\/(.*)@/);
 
                 if (match && match[1]) {
-                    resolve(`enode://${match[1]}@${nodeIp}:30303`);
+                    resolve(`enode://${match[1]}@${nodeIp}:${p2pPort}`);
                 } else {
                     resolve(null);
                 }
@@ -113,13 +119,24 @@ async function getEnodeFromLogs(chainName) {
 
 const createDockerComposeFile = async (blockchainDir, chainName, nodes, bootnode) => {
     const dockerCompose = { version: "3.8", services: {} };
-    
+    const ports = {
+        rpcPort: BASE_RPC_PORT,
+        p2pPort: BASE_P2P_PORT,
+        metricsPort: BASE_METRICS_PORT,
+    };
+    console.log("ports", ports);
+
     for (let index = 0; index < nodes.length; index++) {
         const isBootnode = index === 0;
-        const rpcPort = nodes[index].rpcPort;
-        const p2pPort = BASE_P2P_PORT + index;
-        const metricsPort = BASE_METRICS_PORT + index;
-        
+
+        const rpcPort = ports.rpcPort + index;
+        const p2pPort = ports.p2pPort + index;
+        const metricsPort = ports.metricsPort + index;
+
+        // const rpcPort = nodes[index].rpcPort;
+        // const p2pPort = BASE_P2P_PORT + index;
+        // const metricsPort = BASE_METRICS_PORT + index;
+
         dockerCompose.services[`besu-${chainName}-node${index + 1}`] = {
             image: "hyperledger/besu:latest",
             container_name: `besu-${chainName}-node${index + 1}`,
@@ -149,43 +166,54 @@ const createDockerComposeFile = async (blockchainDir, chainName, nodes, bootnode
             restart: "always"
         };
     }
-    
+
     fs.writeFileSync(path.join(blockchainDir, "docker-compose.yml"), JSON.stringify(dockerCompose, null, 4));
 };
 
 
 const usedPorts = new Set();
-const BASE_RPC_PORT = 9000;
-const BASE_P2P_PORT = 30303;
-const BASE_METRICS_PORT = 9545;
+let BASE_RPC_PORT = 9000;
+let BASE_P2P_PORT = 30303;
+let BASE_METRICS_PORT = 9545;
 
-const getAvailablePortRange = () => {
+const getAvailablePorts = () => {
+    // Find the first available RPC port
     let rpcPort = BASE_RPC_PORT;
     while (usedPorts.has(rpcPort)) {
-        rpcPort += 4; 
+        rpcPort += 4;
     }
+
+    // Find the first available P2P port
+    let p2pPort = BASE_P2P_PORT;
+    while (usedPorts.has(p2pPort)) {
+        p2pPort += 4;
+    }
+
+    // Find the first available Metrics port
+    let metricsPort = BASE_METRICS_PORT;
+    while (usedPorts.has(metricsPort)) {
+        metricsPort += 4;
+    }
+
+    // Add all ports to the used ports set
     usedPorts.add(rpcPort);
-    return rpcPort;
+    usedPorts.add(p2pPort);
+    usedPorts.add(metricsPort);
+
+    BASE_RPC_PORT = rpcPort;
+    BASE_P2P_PORT = p2pPort;
+    BASE_METRICS_PORT = metricsPort;
+
+    console.log("rpcPort", BASE_RPC_PORT, "p2pPort", BASE_RPC_PORT, "metricsPort", BASE_RPC_PORT);
+
+    // Return an object with all ports
+    return {
+        rpcPort,
+        p2pPort,
+        metricsPort
+    };
 };
 
 
-// const findAvailablePort = async (startPort) => {
-//     let port = startPort;
-//     while (!(await isPortAvailable(port))) {
-//         port++;
-//     }
-//     return port;
-// };
 
 
-// const isPortAvailable = (port) => {
-//     return new Promise((resolve) => {
-//         const server = net.createServer();
-//         server.once("error", () => resolve(false));
-//         server.once("listening", () => {
-//             server.close();
-//             resolve(true);
-//         });
-//         server.listen(port);
-//     });
-// };

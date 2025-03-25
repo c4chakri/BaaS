@@ -1,0 +1,128 @@
+{
+    "version": "3.8",
+    "services": {
+        "node1": {
+            "image": "hyperledger/besu:latest",
+            "container_name": "besu-node1",
+            "volumes": [
+                "./QBFT-Network/Node-1/data:/besu/data",
+                "./QBFT-Network/genesis.json:/besu/genesis.json"
+            ],
+            "command": [
+                "--data-path=/besu/data",
+                "--genesis-file=/besu/genesis.json",
+                "--p2p-port=30303",
+                "--rpc-http-enabled",
+                "--rpc-http-api=ETH,NET,QBFT,WEB3",
+                "--host-allowlist=*",
+                "--rpc-http-cors-origins=all",
+                "--rpc-http-port=9000",
+                "--rpc-ws-enabled",
+                "--graphql-http-enabled",
+                "--profile=ENTERPRISE",
+                "--min-gas-price=1000",
+                "--metrics-enabled",
+                "--metrics-host=0.0.0.0",
+                "--metrics-port=9545"
+            ],
+            "ports": [
+                "9000:9000",
+                "30303:30303"
+            ],
+            "restart": "always"
+        },
+        "node2": {
+            "image": "hyperledger/besu:latest",
+            "container_name": "besu-node2",
+            "volumes": [
+                "./QBFT-Network/Node-2/data:/besu/data",
+                "./QBFT-Network/genesis.json:/besu/genesis.json"
+            ],
+            "command": [
+                "--data-path=/besu/data",
+                "--genesis-file=/besu/genesis.json",
+                "--bootnodes=enode://fe1988b64870245c7e136e94c42a7a1b475f65bd8ea118807001c3a3bb75c7f6e8ceeba0f5e25a8bcc125ccb8126edce03e5bfff57b9195412648117b3046b26@172.18.0.2:30303",
+                "--p2p-port=30304",
+                "--rpc-http-enabled",
+                "--rpc-http-api=ETH,NET,QBFT,WEB3",
+                "--host-allowlist=*",
+                "--rpc-http-cors-origins=all",
+                "--rpc-http-port=9001",
+                "--rpc-ws-enabled",
+                "--graphql-http-enabled",
+                "--profile=ENTERPRISE",
+                "--min-gas-price=1000",
+                "--metrics-enabled",
+                "--metrics-host=0.0.0.0",
+                "--metrics-port=9546"
+            ],
+            "ports": [
+                "9001:9001",
+                "30304:30304"
+            ],
+            "restart": "always"
+        },
+        "node3": {
+            "image": "hyperledger/besu:latest",
+            "container_name": "besu-node3",
+            "volumes": [
+                "./QBFT-Network/Node-3/data:/besu/data",
+                "./QBFT-Network/genesis.json:/besu/genesis.json"
+            ],
+            "command": [
+                "--data-path=/besu/data",
+                "--genesis-file=/besu/genesis.json",
+                "--bootnodes=enode://fe1988b64870245c7e136e94c42a7a1b475f65bd8ea118807001c3a3bb75c7f6e8ceeba0f5e25a8bcc125ccb8126edce03e5bfff57b9195412648117b3046b26@172.18.0.2:30303",
+                "--p2p-port=30305",
+                "--rpc-http-enabled",
+                "--rpc-http-api=ETH,NET,QBFT,WEB3",
+                "--host-allowlist=*",
+                "--rpc-http-cors-origins=all",
+                "--rpc-http-port=9002",
+                "--rpc-ws-enabled",
+                "--graphql-http-enabled",
+                "--profile=ENTERPRISE",
+                "--min-gas-price=1000",
+                "--metrics-enabled",
+                "--metrics-host=0.0.0.0",
+                "--metrics-port=9547"
+            ],
+            "ports": [
+                "9002:9002",
+                "30305:30305"
+            ],
+            "restart": "always"
+        },
+        "node4": {
+            "image": "hyperledger/besu:latest",
+            "container_name": "besu-node4",
+            "volumes": [
+                "./QBFT-Network/Node-4/data:/besu/data",
+                "./QBFT-Network/genesis.json:/besu/genesis.json"
+            ],
+            "command": [
+                "--data-path=/besu/data",
+                "--genesis-file=/besu/genesis.json",
+                "--bootnodes=enode://fe1988b64870245c7e136e94c42a7a1b475f65bd8ea118807001c3a3bb75c7f6e8ceeba0f5e25a8bcc125ccb8126edce03e5bfff57b9195412648117b3046b26@172.18.0.2:30303",
+                "--p2p-port=30306",
+                "--rpc-http-enabled",
+                "--rpc-http-api=ETH,NET,QBFT,WEB3",
+                "--host-allowlist=*",
+                "--rpc-http-cors-origins=all",
+                "--rpc-http-port=9003",
+                "--rpc-ws-enabled",
+                "--graphql-http-enabled",
+                "--profile=ENTERPRISE",
+                "--min-gas-price=1000",
+                "--metrics-enabled",
+                "--metrics-host=0.0.0.0",
+                "--metrics-port=9548"
+            ],
+            "ports": [
+                "9003:9003",
+                "30306:30306"
+            ],
+            "restart": "always"
+        }
+    }
+}

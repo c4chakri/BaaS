@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Satoshi", "sans-serif";
+  --breakpoint-3xl: 1920px;
+
+  /* 🎨 Updated Color Palette (Soft, Pleasant, and Modern) */
+  --color-background: oklch(0.97 0.05 240); /* Light Blue */
+  --color-text: oklch(0.15 0.02 260); /* Dark Slate Gray */
+  --color-primary: oklch(0.85 0.15 230); /* Soft Lavender */
+  --color-secondary: oklch(0.78 0.18 210); /* Calm Sky Blue */
+  --color-accent: oklch(0.92 0.3 45); /* Warm Golden Yellow */
+  --color-hover: oklch(0.88 0.28 50); /* Slightly Darker Yellow */
+
+  --ease-fluid: cubic-bezier(0.3, 0, 0, 1);
+  --ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html, body {
+  font-family: var(--font-display);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  display: contents;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.5s var(--ease-fluid);
+}
+
+button {
+  transition: all 0.3s var(--ease-snappy);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+button:hover {
+  transform: scale(1.05);
+}

@@ -39,7 +39,7 @@ exports.createBlockchain = async (data) => {
                     fileUtils.copyFile(path.join(networkFilesDir, address, "key.pub"), path.join(nodeDir, "key.pub"));
                     nodeConfigs.push({ name: `Node-${index + 1}`, address: address });
                 });
-
+                await createDockerfile(blockchainDir);
                 // Start Node-1 in Docker
                 createDockerComposeFile(blockchainDir, nodeConfigs, "");
                 exec(`docker-compose -f ${blockchainDir}/docker-compose.yml up -d node1`, async (err) => {
@@ -175,6 +175,22 @@ const createDockerComposeFile = async (blockchainDir, nodes, bootnode) => {
     fs.writeFileSync(path.join(blockchainDir, "docker-compose.yml"), JSON.stringify(dockerCompose, null, 4));
 };
 
+const createDockerfile = async (blockchainDir) => {
+    const dockerfileContent = `
+    FROM hyperledger/besu:latest
+    
+    WORKDIR /besu
+    
+    COPY QBFT-Network /besu/QBFT-Network
+    
+    EXPOSE 30303 30304 30305 30306 9000 9001 9002 9003 9545 9546 9547 9548
+    
+    ENTRYPOINT ["besu"]
+    `;
+    
+    fs.writeFileSync(path.join(blockchainDir, "Dockerfile"), dockerfileContent);
+};
+
 const findAvailablePort = async (startPort) => {
     let port = startPort;
     while (!(await isPortAvailable(port))) {
@@ -195,64 +211,3 @@ const isPortAvailable = (port) => {
         server.listen(port);
     });
 };
-
-
-// const createDockerComposeFile = (blockchainDir, nodes, bootnode) => {
-//     const dockerCompose = {
-//         version: "3.8",
-//         services: {}
-//     };
-
-
-//     nodes.forEach((node, index) => {
-//         const isBootnode = index === 0;
-//         dockerCompose.services[`node${index + 1}`] = {
-//             image: "hyperledger/besu:latest",
-//             container_name: `besu-node${index + 1}`,
-//             volumes: [
-//                 `./QBFT-Network/Node-${index + 1}/data:/besu/data`,
-//                 `./QBFT-Network/genesis.json:/besu/genesis.json`
-//             ],
-//             command: isBootnode
-//                 ? [
-//                     "--data-path=/besu/data",
-//                     "--genesis-file=/besu/genesis.json",
-//                     "--rpc-http-enabled",
-//                     "--rpc-http-api=ETH,NET,QBFT,WEB3",
-//                     "--host-allowlist=*",
-//                     "--rpc-http-cors-origins=all",
-//                     "--profile=ENTERPRISE",
-//                     "--min-gas-price=1000",
-//                     "--metrics-enabled",
-//                     "--metrics-host=0.0.0.0",
-//                     "--metrics-port=9545"
-//                 ]
-//                 : [
-//                     "--data-path=/besu/data",
-//                     "--genesis-file=/besu/genesis.json",
-//                     `--bootnodes=${bootnode}`,
-//                     `--p2p-port=${30303 + index}`,
-//                     "--rpc-http-enabled",
-//                     "--rpc-http-api=ETH,NET,QBFT,WEB3",
-//                     "--host-allowlist=*",
-//                     "--rpc-http-cors-origins=all",
-//                     `--rpc-http-port=${8545 + index}`,
-//                     "--rpc-ws-enabled",
-//                     "--graphql-http-enabled",
-//                     "--profile=ENTERPRISE",
-//                     "--min-gas-price=1000",
-//                     "--metrics-enabled",
-//                     "--metrics-host=0.0.0.0",
-//                     `--metrics-port=${9545 + index}`
-//                 ],
-//             ports: [
-//                 `${8545 + index}:${8545 + index}`,
-//                 `${30303 + index}:${30303 + index}`
-//             ],
-//             restart: "always"
-//         };
-//     });
-
-
-//     fs.writeFileSync(path.join(blockchainDir, "docker-compose.yml"), JSON.stringify(dockerCompose, null, 4));
-// };

@@ -61,7 +61,7 @@ exports.createBlockchain = async (data) => {
                                 createDockerComposeFile(blockchainDir, data.chainName, nodeConfigs, enode);
                                 exec(`docker-compose -f ${blockchainDir}/docker-compose.yml up -d`, (err) => {
                                     if (err) return reject(new Error(`Docker error: ${err.message}`));
-                                    resolve({ message: "Blockchain created and running in Docker", networkRPC: `http://localhost:${rpcPort.rpcPort}` });
+                                    resolve({ message: "Blockchain created and running in Docker", networkRPC: `http://localhost:${rpcPort.rpcPort}`, chainId: data.chainId });
                                 });
                             } else {
                                 if (attempts < maxAttempts) {

@@ -5,8 +5,18 @@ const path = require("path");
 const fileUtils = require("../utils/fileUtils");
 
 exports.createBlockchain = async (data) => {
+    const chainId = data.qbftConfig.genesis.config.chainId;
+    const consensus = data.consensus;
+    const network = data.network;
+    const chainName = data.chainName;
+    console.log("Chain ID:", chainId);
+    console.log("Consensus:", consensus);
+    console.log("Network:", network);
+    console.log("Chain Name:", chainName);
+
+
     getAvailablePorts();
-    const blockchainDir = path.join(__dirname, "../../blockchain_data", `${data.chainName}_${data.chainId}`);
+    const blockchainDir = path.join(__dirname, "../../blockchain_data", `${chainName}_${chainId}`);
     fileUtils.createDirectory(blockchainDir);
 
     const qbftConfigPath = path.join(blockchainDir, "QBFTConfig.json");
@@ -56,12 +66,12 @@ exports.createBlockchain = async (data) => {
                     const maxAttempts = 20;
                     const checkEnode = async () => {
                         try {
-                            const enode = await getEnodeFromLogs(data.chainName,rpcPort.p2pPort);
+                            const enode = await getEnodeFromLogs(data.chainName, rpcPort.p2pPort);
                             if (enode) {
                                 createDockerComposeFile(blockchainDir, data.chainName, nodeConfigs, enode);
                                 exec(`docker-compose -f ${blockchainDir}/docker-compose.yml up -d`, (err) => {
                                     if (err) return reject(new Error(`Docker error: ${err.message}`));
-                                    resolve({ message: "Blockchain created and running in Docker", networkRPC: `http://localhost:${rpcPort.rpcPort}`, chainId: data.chainId });
+                                    resolve({ message: "Blockchain created and running in Docker", chainName: data.chainName, networkRPC: `http://localhost:${rpcPort.rpcPort}`, chainId: chainId, consensus: consensus, network: network });
                                 });
                             } else {
                                 if (attempts < maxAttempts) {
@@ -86,7 +96,7 @@ exports.createBlockchain = async (data) => {
 
 
 
-async function getEnodeFromLogs(chainName,p2pPort) {
+async function getEnodeFromLogs(chainName, p2pPort) {
     return new Promise((resolve, reject) => {
         // Get the internal Docker IP of besu-node1
         exec(`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' besu-${chainName}-node1`, (err, ip) => {

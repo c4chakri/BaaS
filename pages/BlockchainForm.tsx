@@ -1,16 +1,20 @@
 import { log } from 'node:console';
-import React, { use, useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import React, { use, useState, useEffect, useCallback } from 'react';
+import { useForm, useFormContext, useWatch } from 'react-hook-form';
 import { toWei, toHex } from 'web3-utils';
 import { ethers } from 'ethers';
+import router from 'next/router';
 // import {toast} from 'toast';
+import { getStoredBlockchainData } from '../utils/BlockchianData';
+
 interface BlockchainFormData {
   chainName: string;
-  chainId: string; // Changed to string to match API
+  consensus: string;
+  network: string;
   qbftConfig: {
     genesis: {
       config: {
-        chainId: number;
+        chainId: number | null;
         berlinBlock: number;
         qbft: {
           blockperiodseconds: number;
@@ -40,59 +44,101 @@ interface BlockchainFormData {
     corsOrigin: boolean;
   };
 }
-
+interface Blockchain {
+  chainName: string;
+  address: string;
+  chainId: number;
+  consensus: string;
+  network: string;
+}
 const BlockchainForm = () => {
-  const { register, handleSubmit, watch, setValue } = useForm<BlockchainFormData>({
-    defaultValues: {
-      chainName: "",
-      chainId: "",
-      qbftConfig: {
-        genesis: {
-          config: {
-            chainId: 235,
-            berlinBlock: 0,
-            qbft: {
-              blockperiodseconds: 2,
-              epochlength: 30000,
-              requesttimeoutseconds: 4
+  const { register,
+    handleSubmit,
+    watch,
+    setValue,
+    control,  // Add control to the destructured properties
+    formState: { errors } } = useForm<BlockchainFormData>({
+      defaultValues: {
+        chainName: "",
+        consensus: "QBFT",
+        network: "Testnet",
+        qbftConfig: {
+          genesis: {
+            config: {
+              chainId:null ,
+              berlinBlock: 0,
+              qbft: {
+                blockperiodseconds: 2,
+                epochlength: 30000,
+                requesttimeoutseconds: 4
+              }
+            },
+            nonce: "0x0",
+            timestamp: "0x58ee40ba",
+            gasLimit: "0x989680",
+            difficulty: "0x1",
+            alloc: {
+              
             }
           },
-          nonce: "0x0",
-          timestamp: "0x58ee40ba",
-          gasLimit: "0x989680",
-          difficulty: "0x1",
-          alloc: {
-
+          blockchain: {
+            nodes: {
+              generate: true,
+              count: 4
+            }
           }
         },
-        blockchain: {
-          nodes: {
-            generate: true,
-            count: 4
-          }
+        features: {
+          miningReward: true,
+          validatorsChange: true,
+          http: true,
+          ws: true,
+          metrics: true,
+          corsOrigin: true
         }
-      },
-      features: {
-        miningReward: true,
-        validatorsChange: true,
-        http: true,
-        ws: true,
-        metrics: true,
-        corsOrigin: true
       }
-    }
-  });
+    });
 
+    const [existingBlockchains, setExistingBlockchains] = useState<Blockchain[]>([]);
+  const [isChecking, setIsChecking] = useState(false);
+
+  // Watch relevant form fields
+  const chainName = useWatch({ control, name: 'chainName' });
+  const chainId = useWatch({ control, name: 'qbftConfig.genesis.config.chainId' });
+
+  const checkForExistingBlockchain = useCallback(() => {
+    if (!chainName && !chainId) return; // Skip if no values to check
+    
+    setIsChecking(true);
+    const storedData = getStoredBlockchainData();
+    setExistingBlockchains(storedData);
+    setIsChecking(false);
+  }, [chainName, chainId]);
+  
+  // Debounced validation
+  useEffect(() => {
+    const timer = setTimeout(checkForExistingBlockchain, 500);
+    return () => clearTimeout(timer);
+  }, [chainName, chainId, checkForExistingBlockchain]);
+  
+  // Determine conflicts
+  const hasNameConflict = existingBlockchains.some(b => b.chainName === chainName);
+  const hasIdConflict = existingBlockchains.some(b => b.chainId === Number(chainId));
+  const [isLoading, setIsLoading] = useState(false);
 
 
   const onSubmit = async (data: BlockchainFormData) => {
     try {
-      // Log the payload for debugging
+      if (hasNameConflict || hasIdConflict) {
+        alert('Please resolve conflicts with existing blockchain before submitting');
+        return;
+      }
+      // Your form submission logic here
+      console.log('Form submitted:', data);
       console.log("API Payload:", data);
-  
-      // Make API call to create blockchain configuration
+      setIsLoading(true);
       const response = await fetch(
-        'http://localhost:8000/api/blockchain/create', 
+        'http://localhost:8000/api/blockchain/create',
         {
           method: 'POST',
           headers: {
@@ -101,51 +147,72 @@ const BlockchainForm = () => {
           body: JSON.stringify(data)
         }
       );
-  
-      // Check if the response is successful
+      // const response = {
+      //   ok: true,
+      //   status: 200,
+      //   statusText: "OK",
+      //   json: async () => ({
+      //     networkRPC: "http://localhost:8545",
+      //     chainId: 235,
+      //     consensus: "QBFT",
+      //     network: "Testnet"
+      //   })}
+
       if (!response.ok) {
-        // Parse error response
         const errorData = await response.json();
         throw new Error(
           `API request failed: ${response.status} ${response.statusText}. 
            Details: ${JSON.stringify(errorData)}`
         );
       }
-  
-      // Parse successful response
+
       const result = await response.json();
-      
-      // Handle successful submission
-      // toast.success('Blockchain created successfully', {
-      //   description: result.message
-      // });
-  
-      // Store network details for further use
-      // setNetworkDetails({
-      //   rpcUrl: result.networkRPC,
-      //   chainId: result.chainId
-      // });
-  
-      // Optional: Additional actions after successful creation
-      // For example, you might want to:
-      // - Update local storage
-      // - Trigger a network refresh
-      // - Navigate to a network details page
+
+      if (typeof window !== 'undefined') {
+        // 1. Get existing data from localStorage or initialize empty array
+        const existingDataString = localStorage.getItem('blockchainNetworks');
+        let existingData: any[] = [];
+
+        if (existingDataString) {
+          try {
+            existingData = JSON.parse(existingDataString);
+            if (!Array.isArray(existingData)) {
+              // Handle case where stored data isn't an array
+              existingData = [existingData]; // Convert to array
+            }
+          } catch (e) {
+            console.error('Error parsing existing blockchain data:', e);
+            existingData = [];
+          }
+        }
+
+        // 2. Create new storage data
+        const newData = {
+          chainName: result.chainName,
+          networkRPC: result.networkRPC,
+          chainId: result.chainId,
+          consensus: result.consensus,
+          network: result.network,
+          timestamp: new Date().toISOString()
+        };
+
+        // 3. Append new data to existing array
+        const updatedData = [...existingData, newData];
+
+        // 4. Store back to localStorage
+        localStorage.setItem('blockchainNetworks', JSON.stringify(updatedData));
+      }
+
       console.log('Blockchain Network Details:', {
         RPC: result.networkRPC,
-        ChainID: result.chainId
+        ChainID: result.chainId,
+        consensus: result.consensus,
+        network: result.network
       });
-  
-      // Reset form if needed
-      // reset();
-  
+      setIsLoading(false);
+      router.push('/');
     } catch (error) {
-      // Handle any errors during submission
       console.error('Submission error:', error);
-      
-      // toast.error('Failed to create blockchain configuration', {
-      //   description: error instanceof Error ? error.message : 'Unknown error occurred'
-      // });
     }
   };
 
@@ -203,6 +270,14 @@ const BlockchainForm = () => {
   };
 
 
+  const checkBlockchain = () => {
+    const networkData = getStoredBlockchainData()
+    console.log("Network Data:", networkData);
+
+  }
+
+  checkBlockchain()
+
   const removeAlloc = (address: string) => {
     const currentAlloc = watch("qbftConfig.genesis.alloc");
     const { [address]: _, ...remainingAllocs } = currentAlloc;
@@ -216,30 +291,107 @@ const BlockchainForm = () => {
       ? `${address.slice(0, 6)}...${address.slice(-4)}`
       : address;
   };
-  function setNetworkDetails(arg0: { rpcUrl: any; chainId: any; }) {
-    throw new Error('Function not implemented.');
-  }
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 shadow-lg rounded-lg w-full max-w-lg text-white">
       <h2 className="text-xl font-semibold text-blue-400 mb-4">Blockchain Configuration</h2>
 
       {/* Basic Configuration */}
       <div className="mb-4">
-        <label className="block text-gray-300">Blockchain Name</label>
+        <label className="block text-gray-300 text-sm font-medium mb-1">
+          Blockchain Name
+          {isChecking && (
+            <span className="ml-2 text-xs text-gray-400">(verifying...)</span>
+          )}
+        </label>
         <input
           type="text"
-          placeholder='My Blockchain'
-          {...register("chainName", { required: true })}
+          placeholder='Mobius Blockchain'
+          {...register('chainName', {
+            required: 'Blockchain name is required',
+            validate: {
+              conflict: () => !hasNameConflict || 'This name matches an existing blockchain'
+            }
+          })}
+          className={`w-full p-2 border rounded bg-gray-800 text-white ${errors.chainName || hasNameConflict ? 'border-red-500' : 'border-gray-600'
+            }`}
+          aria-invalid={!!errors.chainName || hasNameConflict}
+        />
+        {errors.chainName && (
+          <p className="mt-1 text-sm text-red-500" role="alert">
+            {errors.chainName.message}
+          </p>
+        )}
+        {hasNameConflict && !errors.chainName && (
+          <p className="mt-1 text-sm text-yellow-500" role="alert">
+            Warning: This name matches an existing blockchain configuration
+          </p>
+        )}
+      </div>
+      <div className="mb-4">
+        <label className="block text-gray-300 text-sm font-medium mb-1">
+          Chain ID
+          {isChecking && (
+            <span className="ml-2 text-xs text-gray-400">(verifying...)</span>
+          )}
+        </label>
+        <input
+          type="number"
+          placeholder='11155111'
+          {...register('qbftConfig.genesis.config.chainId', {
+            required: 'Chain ID is required',
+            valueAsNumber: true,
+            min: {
+              value: 1,
+              message: 'Chain ID must be positive'
+            },
+            validate: {
+              conflict: () => !hasIdConflict || 'This ID matches an existing blockchain'
+            }
+          })}
+          className={`w-full p-2 border rounded bg-gray-800 text-white ${errors.qbftConfig?.genesis?.config?.chainId || hasIdConflict
+            ? 'border-red-500'
+            : 'border-gray-600'
+            }`}
+          aria-invalid={!!errors.qbftConfig?.genesis?.config?.chainId || hasIdConflict}
+        />
+        {errors.qbftConfig?.genesis?.config?.chainId && (
+          <p className="mt-1 text-sm text-red-500" role="alert">
+            {errors.qbftConfig.genesis.config.chainId.message}
+          </p>
+        )}
+        {hasIdConflict && !errors.qbftConfig?.genesis?.config?.chainId && (
+          <p className="mt-1 text-sm text-yellow-500" role="alert">
+            Warning: This ID matches an existing blockchain configuration
+          </p>
+        )}
+      </div>
+
+      {/* <div className="mb-4">
+        <label className="block text-gray-300">Chain ID</label>
+        <input
+          type="number"
+          placeholder='1337'
+          {...register("qbftConfig.genesis.config.chainId", { valueAsNumber: true })}
+          className="w-full p-2 border rounded bg-gray-800 text-white"
+        />
+      </div> */}
+
+      <div className="mb-4">
+        <label className="block text-gray-300">Network</label>
+        <input
+          type="text"
+          placeholder='Testnet'
+          {...register("network", { required: true })}
           className="w-full p-2 border rounded bg-gray-800 text-white"
         />
       </div>
-
       <div className="mb-4">
-        <label className="block text-gray-300">Chain ID</label>
+        <label className="block text-gray-300">Consensus</label>
         <input
-         type="number"
-         placeholder='1337'
-         {...register("qbftConfig.genesis.config.chainId", { valueAsNumber: true })}
+          type="text"
+          placeholder='QBFT'
+          {...register("consensus", { required: true })}
           className="w-full p-2 border rounded bg-gray-800 text-white"
         />
       </div>
@@ -266,14 +418,14 @@ const BlockchainForm = () => {
           />
         </div>
 
-        <div className="mb-4">
+        {/* <div className="mb-4">
           <label className="block text-gray-300">Epoch Length</label>
           <input
             type="number"
             {...register("qbftConfig.genesis.config.qbft.epochlength", { valueAsNumber: true })}
             className="w-full p-2 border rounded bg-gray-800 text-white"
           />
-        </div>
+        </div> */}
 
         <div className="mb-4">
           <label className="block text-gray-300">Request Timeout Seconds</label>
@@ -345,7 +497,7 @@ const BlockchainForm = () => {
             <button
               type="button"
               onClick={addAlloc}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
             >
               Add
             </button>
@@ -426,10 +578,23 @@ const BlockchainForm = () => {
 
       <button
         type="submit"
-        className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded"
+        className={`mt-6 px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg shadow-lg hover:bg-orange-700 transition w-full text-white font-bold rounded flex items-center justify-center ${isLoading ? 'bg-green-700' : 'bg-green-600 hover:bg-green-700'
+          }`}
       >
-        Create Blockchain
+        {isLoading ? (
+          <>
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Creating...
+          </>
+        ) : (
+          'Create Blockchain'
+        )}
       </button>
+
+
     </form>
   );
 };
